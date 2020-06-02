@@ -327,6 +327,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt install -y \
   ubuntu-standard \
   ubuntu-server \
   apt-transport-https \
+  avahi-daemon \
   ca-certificates \
   curl \
   git \
@@ -337,23 +338,31 @@ sudo DEBIAN_FRONTEND=noninteractive apt install -y \
   net-tools \
   nmap \
   qemu-kvm \
+  samba \
   software-properties-common \
   telnet \
   tree \
   virtinst
-sudo snap install lxd
 
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io
-sudo curl -L "https://github.com/docker/compose/releases/download/1.25.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-sudo usermod -a -G docker $CFG_USERNAME
+# Disabled because docker and LXD don't play nice together
+# curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+# sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+# sudo apt update
+# sudo apt install -y docker-ce docker-ce-cli containerd.io
+# sudo curl -L "https://github.com/docker/compose/releases/download/1.25.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+# sudo chmod +x /usr/local/bin/docker-compose
+# sudo usermod -a -G docker $CFG_USERNAME
 
 sudo apt dist-upgrade -y
 
+# Add support for mapping users inside containers to the main user outside
+echo root:1000:1 |sudo tee -a /etc/subuid
+echo root:1000:1 |sudo tee -a /etc/subgid
+
 sudo zfs snapshot rpool/ROOT/ubuntu_$CFG_ZFSID@fresh-install
+
+# Run this after the snapshot because snaps and rollbacks don't mix.
+sudo snap install lxd
 
 echo "Installation complete. Delete /home/$CFG_USERNAME/finish-install.sh and reboot."
 EOF
