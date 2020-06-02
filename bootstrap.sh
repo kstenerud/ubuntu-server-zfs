@@ -318,7 +318,7 @@ rm /mnt/root/bootstrap2.sh
 # Installation finisher script
 # ----------------------------
 
-cat <<EOF >/mnt/home/$CFG_USERNAME/finish-install.sh
+cat <<FINISH_INSTALL_SH_EOF >/mnt/home/$CFG_USERNAME/finish-install.sh
 #!/bin/bash
 
 set -eux
@@ -344,28 +344,52 @@ sudo DEBIAN_FRONTEND=noninteractive apt install -y \
   tree \
   virtinst
 
-# Disabled because docker and LXD don't play nice together
-# curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-# sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-# sudo apt update
-# sudo apt install -y docker-ce docker-ce-cli containerd.io
-# sudo curl -L "https://github.com/docker/compose/releases/download/1.25.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-# sudo chmod +x /usr/local/bin/docker-compose
-# sudo usermod -a -G docker $CFG_USERNAME
+# Docker CE
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io
+sudo curl -L "https://github.com/docker/compose/releases/download/1.25.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+sudo usermod -a -G docker $CFG_USERNAME
 
-sudo apt dist-upgrade -y
+# Workaround so that docker doesn't interefere with LXC using br0
+cat <<EOF >/etc/iptables-br0.conf
+*filter
+:DOCKER-USER - [0:0]
+-F DOCKER-USER
+-A DOCKER-USER -i br0 -o br0 -j ACCEPT
+COMMIT
+EOF
+
+cat <<EOF >/etc/systemd/system/iptables-br0.service
+[Unit]
+Description=Prevent docker from interfering with br0
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/iptables-restore -n /etc/iptables-br0.conf
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl enable --now iptables-br0
 
 # Add support for mapping users inside containers to the main user outside
 echo root:1000:1 |sudo tee -a /etc/subuid
 echo root:1000:1 |sudo tee -a /etc/subgid
 
+sudo apt dist-upgrade -y
+
 sudo zfs snapshot rpool/ROOT/ubuntu_$CFG_ZFSID@fresh-install
 
-# Run this after the snapshot because snaps and rollbacks don't mix.
+# Run this after the snapshot because snaps and rollbacks don't mix well.
 sudo snap install lxd
 
 echo "Installation complete. Delete /home/$CFG_USERNAME/finish-install.sh and reboot."
-EOF
+FINISH_INSTALL_SH_EOF
 chmod a+x /mnt/home/$CFG_USERNAME/finish-install.sh
 chown 1000:1000 /mnt/home/$CFG_USERNAME/finish-install.sh
 
